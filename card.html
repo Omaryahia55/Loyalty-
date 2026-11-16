@@ -1,0 +1,26 @@
+<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>بطاقة الولاء</title>
+<style id="st"></style></head><body><div class="w"><div class="c" id="box">جارٍ التحميل…</div></div>
+<script type="module">
+import {db, esc, norm, wa, css, stamps} from "./firebase-init.js";
+import {doc, onSnapshot} from "https://www.gstatic.com/firebasejs/13.3.0/firebase-firestore.js";
+document.getElementById('st').textContent = css;
+const q = new URLSearchParams(location.search), s = q.get('s'), c = q.get('c');
+let shop = null, cu = null;
+function draw() {
+  const box = document.getElementById('box');
+  if (!s || !c) { box.textContent = 'رابط غير صالح'; return; }
+  if (!shop || !cu) { box.textContent = 'لم يتم العثور على البطاقة'; return; }
+  if (shop.color) document.documentElement.style.setProperty('--ac', shop.color);
+  const t = shop.target || 10, full = cu.stamps >= t;
+  document.title = 'بطاقة ' + shop.name;
+  box.innerHTML = `<h2 style="margin:0">${esc(shop.name)}</h2><p class="mu">مرحباً ${esc(cu.name || '')}</p>` + stamps(Math.min(cu.stamps, t), t) +
+    `<p style="text-align:center;font-weight:700">${full ? 'مبروك! تستحق: ' + esc(shop.reward) + ' 🎉' : 'باقي ' + (t - cu.stamps) + ' للحصول على: ' + esc(shop.reward)}</p>` +
+    `<p class="mu" style="text-align:center">عدد الزيارات: ${cu.visits || 0}${cu.rewards ? ' · مكافآت حصلت عليها: ' + cu.rewards : ''}</p>` +
+    (shop.wa ? `<a class="b w2" href="${wa(norm(shop.wa), 'مرحباً')}">تواصل مع المحل عبر واتساب</a>` : '') +
+    `<p class="mu" style="text-align:center">احفظ هذه الصفحة: القائمة ⋮ ← إضافة إلى الشاشة الرئيسية</p>`;
+}
+if (s && c) {
+  onSnapshot(doc(db, 'shops', s), d => { shop = d.exists() ? d.data() : null; draw(); }, () => draw());
+  onSnapshot(doc(db, 'shops', s, 'customers', c), d => { cu = d.exists() ? d.data() : null; draw(); }, () => draw());
+} else draw();
+</script></body></html>

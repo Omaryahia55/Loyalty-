@@ -1,0 +1,60 @@
+<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>الكاشير</title>
+<style id="st"></style></head><body><div class="w">
+<div class="c" id="lg"><h2 style="margin:0 0 8px">دخول الكاشير</h2><label>البريد</label><input id="em" type="email"><label>كلمة السر</label><input id="pw" type="password"><button class="b" id="in">دخول</button><div id="lm"></div></div>
+<div id="ap" hidden>
+<div class="tabs"><button id="t1" class="on">كاشير</button><button id="t2">الزبائن</button><button id="t3">الإعدادات</button><button id="t4">خروج</button></div>
+<section id="p1"><div class="c"><label>رقم هاتف الزبون</label><input id="ph" type="tel" inputmode="tel" placeholder="0550 00 00 00"><label>الاسم (اختياري)</label><input id="nm"><button class="b" id="add">إضافة طابع ✓</button></div><div id="rs"></div></section>
+<section id="p2" hidden><div class="c"><label>عرض</label><select id="fl"><option value="0">كل الزبائن</option><option value="14">غائبون 14 يوماً فأكثر</option><option value="30">غائبون 30 يوماً فأكثر</option></select><p class="mu" id="ct"></p></div><div class="c" id="ls"></div></section>
+<section id="p3" hidden><div class="c"><label>اسم المحل</label><input id="sn"><label>عدد الطوابع للمكافأة</label><input id="stg" type="number" min="2" max="20"><label>المكافأة</label><input id="sr"><label>لون البطاقة</label><input id="sc" type="color" style="height:44px"><label>رقم واتساب المحل</label><input id="sw" type="tel"><label>رسالة العرض ({name} و{shop})</label><textarea id="sm" rows="3"></textarea><button class="b" id="sv">حفظ</button><div id="svm"></div></div></section>
+</div></div>
+<script type="module">
+import {db, auth, esc, norm, wa, css, stamps} from "./firebase-init.js";
+import {signInWithEmailAndPassword, onAuthStateChanged, signOut} from "https://www.gstatic.com/firebasejs/13.3.0/firebase-auth.js";
+import {doc, setDoc, updateDoc, collection, onSnapshot, addDoc, deleteDoc, increment} from "https://www.gstatic.com/firebasejs/13.3.0/firebase-firestore.js";
+const $ = id => document.getElementById(id);
+$('st').textContent = css;
+let uid = null, shop = {name: 'اسم المحل', target: 10, reward: 'هدية مجانية', color: '#0f766e', wa: '', msg: 'مرحباً {name}، اشتقنا لك في {shop}! تفضل بزيارتنا واحصل على عرض خاص.'};
+let cus = {}, lastId = null;
+const days = c => Math.floor((Date.now() - c.last) / 864e5);
+const link = id => new URL('card.html?s=' + uid + '&c=' + id, location.href).href;
+function tab(n) { [1,2,3].forEach(i => { $('p'+i).hidden = i !== n; $('t'+i).classList.toggle('on', i === n); }); if (n === 3) fill(); if (n === 2) list(); }
+$('t1').onclick = () => tab(1); $('t2').onclick = () => tab(2); $('t3').onclick = () => tab(3); $('t4').onclick = () => signOut(auth);
+$('in').onclick = async () => { try { await signInWithEmailAndPassword(auth, $('em').value.trim(), $('pw').value); } catch (e) { $('lm').innerHTML = '<div class="ok">البريد أو كلمة السر خاطئة</div>'; } };
+onAuthStateChanged(auth, u => {
+  $('lg').hidden = !!u; $('ap').hidden = !u;
+  if (!u) { uid = null; return; }
+  uid = u.uid;
+  onSnapshot(doc(db, 'shops', uid), d => { if (d.exists()) { shop = {...shop, ...d.data()}; document.documentElement.style.setProperty('--ac', shop.color); } else tab(3); });
+  onSnapshot(collection(db, 'shops', uid, 'customers'), s => { cus = {}; s.forEach(d => cus[d.id] = d.data()); res(); list(); });
+});
+function res(msg) {
+  const c = cus[lastId]; if (!c) return;
+  const t = shop.target, full = c.stamps >= t;
+  const txt = `مرحباً ${c.name || ''}، بطاقتك في ${shop.name}: ${c.stamps}/${t}. ` + (full ? 'مبروك! تستحق ' + shop.reward + '. ' : 'باقي ' + (t - c.stamps) + ' للحصول على ' + shop.reward + '. ') + 'بطاقتك: ' + link(lastId);
+  $('rs').innerHTML = `<div class="c"><strong>${esc(c.name || c.phone)}</strong> <span class="mu">${esc(c.phone)}</span>${stamps(Math.min(c.stamps, t), t)}${msg ? '<div class="ok">' + msg + '</div>' : ''}${full ? '<button class="b" id="rd">تسليم المكافأة: ' + esc(shop.reward) + '</button>' : ''}<a class="b w2" target="_blank" href="${wa(c.phone, txt)}">إرسال البطاقة عبر واتساب</a></div>`;
+  if (full) $('rd').onclick = async () => { await updateDoc(doc(db, 'shops', uid, 'customers', lastId), {stamps: increment(-t), rewards: increment(1)}); res('تم تسليم المكافأة ✓'); };
+}
+$('add').onclick = async () => {
+  const p = norm($('ph').value);
+  if (p.length < 11) { $('rs').innerHTML = '<div class="c">أدخل رقماً صحيحاً</div>'; return; }
+  const nm = $('nm').value.trim();
+  const id = Object.keys(cus).find(k => cus[k].phone === p);
+  try {
+    if (id) { const u = {stamps: increment(1), visits: increment(1), last: Date.now()}; if (nm) u.name = nm; await updateDoc(doc(db, 'shops', uid, 'customers', id), u); lastId = id; }
+    else { const r = await addDoc(collection(db, 'shops', uid, 'customers'), {name: nm, phone: p, stamps: 1, visits: 1, rewards: 0, last: Date.now()}); lastId = r.id; }
+    $('ph').value = ''; $('nm').value = ''; setTimeout(() => res('تمت إضافة الطابع ✓'), 300);
+  } catch (e) { $('rs').innerHTML = '<div class="c">تعذر الحفظ: ' + esc(e.code || e.message) + '</div>'; }
+};
+function list() {
+  const m = +$('fl').value, a = Object.entries(cus).filter(([, c]) => !m || days(c) >= m).sort((x, y) => x[1].last - y[1].last);
+  $('ct').textContent = 'العدد: ' + a.length;
+  $('ls').innerHTML = a.length ? a.map(([id, c]) => `<div class="r"><div><b>${esc(c.name || c.phone)}</b><div class="mu">${esc(c.phone)} · ${c.stamps}/${shop.target} · منذ ${days(c)} يوم</div></div><span><a class="b s w2" target="_blank" href="${wa(c.phone, shop.msg.replace(/\{name\}/g, c.name || 'عزيزي الزبون').replace(/\{shop\}/g, shop.name) + ' ' + link(id))}">واتساب</a> <button class="b s g" data-d="${id}">حذف</button></span></div>`).join('') : '<p class="mu">لا يوجد زبائن.</p>';
+  $('ls').querySelectorAll('[data-d]').forEach(b => b.onclick = () => { if (confirm('حذف الزبون؟')) deleteDoc(doc(db, 'shops', uid, 'customers', b.dataset.d)); });
+}
+$('fl').onchange = list;
+function fill() { $('sn').value = shop.name; $('stg').value = shop.target; $('sr').value = shop.reward; $('sc').value = shop.color; $('sw').value = shop.wa; $('sm').value = shop.msg; }
+$('sv').onclick = async () => {
+  const d = {name: $('sn').value.trim() || 'اسم المحل', target: Math.max(2, Math.min(20, +$('stg').value || 10)), reward: $('sr').value.trim() || 'هدية', color: $('sc').value, wa: $('sw').value.trim(), msg: $('sm').value.trim() || shop.msg};
+  try { await setDoc(doc(db, 'shops', uid), d); $('svm').innerHTML = '<div class="ok">تم الحفظ ✓</div>'; } catch (e) { $('svm').innerHTML = '<div class="ok">تعذر الحفظ: ' + esc(e.code || e.message) + '</div>'; }
+};
+</script></body></html>
